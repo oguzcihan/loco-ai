@@ -6,6 +6,7 @@ import { generate } from '../core/ollama.js';
 import { getConfig } from '../utils/config.js';
 import { setupCommand } from './setup.js';
 import { ensureOllama } from '../utils/ensure-ollama.js';
+import { copyToClipboard } from '../utils/clipboard.js';
 
 const MAX_DIFF_CHARS = 4000;
 
@@ -50,62 +51,66 @@ export async function commitCommand() {
 }
 
 async function generateAndPrompt(diff, model) {
-  // Step 3 + 4: Build prompt and generate
   const prompt = buildPrompt(diff);
 
-  const spin = ora('Generating commit message...').start();
-  let message;
+  const spin = ora('Generating commit messages...').start();
+  let messages;
   try {
     const raw = await generate(prompt, model);
-    message = cleanMessage(raw);
+    messages = parseMessages(raw);
     spin.stop();
   } catch (err) {
-    spin.fail('Failed to generate commit message');
+    spin.fail('Failed to generate commit messages');
     console.error(chalk.red('✖'), err.message);
     process.exit(1);
   }
 
-  if (!message) {
+  if (messages.length === 0) {
     spin.stop();
-    console.error(chalk.red('✖') + ' Model returned an empty message. Try regenerating.');
+    console.error(chalk.red('✖') + ' Model returned empty messages. Try regenerating.');
     process.exit(1);
   }
 
-  // Step 5: Display in a box
-  printMessageBox(message);
+  console.log('');
 
-  // Step 6: Ask user what to do
-  const action = await select({
-    message: 'What would you like to do?',
-    choices: [
-      { name: 'Use this message',       value: 'use' },
-      { name: 'Edit before committing',  value: 'edit' },
-      { name: 'Regenerate',              value: 'regenerate' },
-      { name: 'Cancel',                  value: 'cancel' },
-    ],
+  const choices = [
+    ...messages.map((msg, i) => ({
+      name: `${i + 1}. ${msg}`,
+      value: msg,
+    })),
+    { name: chalk.cyan('↻') + ' Regenerate',     value: '__regenerate__' },
+    { name: chalk.dim('✎') + ' Edit manually',   value: '__edit__' },
+    { name: chalk.red('✖') + ' Abort',            value: '__abort__' },
+  ];
+
+  const picked = await select({
+    message: 'Pick a commit message:',
+    choices,
   });
 
-  switch (action) {
-    case 'use':
-      doCommit(message);
+  switch (picked) {
+    case '__regenerate__':
+      await generateAndPrompt(diff, model);
       break;
 
-    case 'edit': {
-      const edited = await editMessage(message);
+    case '__edit__': {
+      const edited = await editMessage(messages[0]);
       if (edited) {
         doCommit(edited);
+        copyToClipboard(edited);
       } else {
         console.log(chalk.yellow('⚠') + ' Empty message — commit cancelled.');
       }
       break;
     }
 
-    case 'regenerate':
-      await generateAndPrompt(diff, model);
+    case '__abort__':
+      console.log(chalk.dim('Commit cancelled.'));
       break;
 
-    case 'cancel':
-      console.log(chalk.dim('Commit cancelled.'));
+    default:
+      doCommit(picked);
+      copyToClipboard(picked);
       break;
   }
 }
@@ -133,10 +138,10 @@ export function getDiff() {
 }
 
 export function buildPrompt(diff) {
-  return `You are a commit message generator. Analyze this git diff and write ONE commit message.
+  return `You are a commit message generator. Analyze this git diff and write exactly 3 different commit messages.
 
 STRICT FORMAT: type: description
-The message MUST start with one of these types followed by a colon:
+Each message MUST start with one of these types followed by a colon:
   feat: (new feature)
   fix: (bug fix)
   refactor: (code restructuring)
@@ -148,20 +153,17 @@ The message MUST start with one of these types followed by a colon:
 You may optionally include a scope: type(scope): description
 
 Rules:
-- Max 100 characters total
+- Max 100 characters per message
 - Lowercase only
 - No period at the end
-- Respond with ONLY the commit message, nothing else
 - Do NOT omit the type prefix
+- Each message should have a different perspective or focus
+- Respond with ONLY the 3 messages, numbered 1. 2. 3. one per line
 
-Good examples:
-  feat: add user authentication endpoint
-  fix(api): handle null response from external service
-  refactor: extract validation logic into shared util
-
-Bad examples (NEVER do this):
-  Add new endpoint for stats data
-  Updated the login page
+Example output format:
+1. feat(auth): add JWT refresh token rotation
+2. refactor(middleware): improve token handling with expiry-based refresh
+3. feat(security): implement session token rotation for enhanced auth
 
 Git diff:
 ${diff}`;
@@ -189,6 +191,40 @@ export function cleanMessage(raw) {
   if (msg.endsWith('.')) msg = msg.slice(0, -1);
 
   return msg;
+}
+
+export function parseMessages(raw) {
+  let text = raw.trim();
+
+  // Strip <think>...</think> blocks
+  text = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+  // Strip markdown code fences
+  const fenceMatch = text.match(/^```[\w]*\n?([\s\S]*?)\n?```$/);
+  if (fenceMatch) text = fenceMatch[1].trim();
+
+  // Try to extract numbered lines: "1. ...", "2. ...", "3. ..."
+  const numbered = text.match(/^\d+\.\s+.+$/gm);
+  if (numbered && numbered.length >= 2) {
+    return numbered
+      .map(line => cleanMessage(line.replace(/^\d+\.\s+/, '')))
+      .filter(msg => msg.length > 0)
+      .slice(0, 3);
+  }
+
+  // Fallback: split by newlines, clean each
+  const lines = text.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+    .map(l => cleanMessage(l))
+    .filter(msg => msg.length > 0)
+    .slice(0, 3);
+
+  if (lines.length > 0) return lines;
+
+  // Last resort: treat as single message
+  const single = cleanMessage(text);
+  return single ? [single] : [];
 }
 
 export function printMessageBox(message) {

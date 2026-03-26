@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import { confirm } from '@inquirer/prompts';
 
 const HOOK_SCRIPT = `#!/bin/sh
-loco hook-run "$1"
+loco hook-run "$1" "$2"
 `;
 
 export async function initCommand() {

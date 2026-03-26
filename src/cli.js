@@ -7,6 +7,7 @@ import { modelsCommand } from './commands/models.js';
 import { doctorCommand } from './commands/doctor.js';
 import { hookRunCommand } from './commands/hook-run.js';
 import { messageCommand } from './commands/message.js';
+import { pullCommand } from './commands/pull.js';
 
 export function run() {
   const program = new Command();
@@ -59,12 +60,23 @@ Examples:
 
   program
     .command('models')
-    .description('List available Ollama models')
+    .description('List, select, and pull Ollama models')
     .addHelpText('after', `
 Examples:
-  $ loco models             Show all installed models, mark the active one
+  $ loco models             List models with interactive menu
 `)
     .action(modelsCommand);
+
+  program
+    .command('pull')
+    .argument('<model>', 'Model name to pull (e.g. llama3.2:1b)')
+    .description('Pull a model from the Ollama library')
+    .addHelpText('after', `
+Examples:
+  $ loco pull llama3.2:1b   Download a specific model
+  $ loco pull mistral:latest
+`)
+    .action(pullCommand);
 
   program
     .command('message')
@@ -90,6 +102,7 @@ Examples:
   program
     .command('hook-run', { hidden: true })
     .argument('<filepath>', 'Commit message file path (passed by git)')
+    .argument('[source]', 'Commit message source (message, merge, squash, commit, template)')
     .action(hookRunCommand);
 
   program.parse();

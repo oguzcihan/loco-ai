@@ -1,4 +1,3 @@
-import { execSync } from 'node:child_process';
 import ora from 'ora';
 import chalk from 'chalk';
 import { select, confirm } from '@inquirer/prompts';
@@ -6,7 +5,8 @@ import { generate } from '../core/ollama.js';
 import { getConfig } from '../utils/config.js';
 import { setupCommand } from './setup.js';
 import { ensureOllama } from '../utils/ensure-ollama.js';
-import { getDiff, buildPrompt, cleanMessage, printMessageBox } from './commit.js';
+import { copyToClipboard } from '../utils/clipboard.js';
+import { getDiff, buildPrompt, parseMessages } from './commit.js';
 
 const MAX_DIFF_CHARS = 4000;
 
@@ -49,60 +49,52 @@ export async function messageCommand() {
 async function generateAndPrompt(diff, model) {
   const prompt = buildPrompt(diff);
 
-  const spin = ora('Generating commit message...').start();
-  let message;
+  const spin = ora('Generating commit messages...').start();
+  let messages;
   try {
     const raw = await generate(prompt, model);
-    message = cleanMessage(raw);
+    messages = parseMessages(raw);
     spin.stop();
   } catch (err) {
-    spin.fail('Failed to generate commit message');
+    spin.fail('Failed to generate commit messages');
     console.error(chalk.red('✖'), err.message);
     process.exit(1);
   }
 
-  if (!message) {
+  if (messages.length === 0) {
     spin.stop();
-    console.error(chalk.red('✖') + ' Model returned an empty message. Try again.');
+    console.error(chalk.red('✖') + ' Model returned empty messages. Try again.');
     process.exit(1);
   }
 
-  printMessageBox(message);
+  console.log('');
 
-  const action = await select({
-    message: 'What would you like to do?',
-    choices: [
-      { name: 'Approve (copy to clipboard)', value: 'approve' },
-      { name: 'Regenerate',                  value: 'regenerate' },
-      { name: 'Cancel',                      value: 'cancel' },
-    ],
+  const choices = [
+    ...messages.map((msg, i) => ({
+      name: `${i + 1}. ${msg}`,
+      value: msg,
+    })),
+    { name: chalk.cyan('↻') + ' Regenerate', value: '__regenerate__' },
+    { name: chalk.red('✖') + ' Abort',       value: '__abort__' },
+  ];
+
+  const picked = await select({
+    message: 'Pick a commit message:',
+    choices,
   });
 
-  switch (action) {
-    case 'approve':
-      copyToClipboard(message);
-      console.log(chalk.green('✔') + ' Copied to clipboard. Paste it into your IDE commit box.');
-      break;
-
-    case 'regenerate':
+  switch (picked) {
+    case '__regenerate__':
       await generateAndPrompt(diff, model);
       break;
 
-    case 'cancel':
+    case '__abort__':
       console.log(chalk.dim('Cancelled.'));
       break;
-  }
-}
 
-function copyToClipboard(text) {
-  try {
-    const cmd = process.platform === 'darwin' ? 'pbcopy'
-      : process.platform === 'win32' ? 'clip'
-      : 'xclip -selection clipboard';
-    execSync(cmd, { input: text, stdio: ['pipe', 'ignore', 'ignore'] });
-  } catch {
-    // Fallback: just print it so user can copy manually
-    console.log(chalk.yellow('⚠') + ' Could not copy to clipboard. Here is the message:');
-    console.log(text);
+    default:
+      copyToClipboard(picked);
+      console.log(chalk.green('✔') + ' Copied to clipboard. Paste it into your IDE commit box.');
+      break;
   }
 }
