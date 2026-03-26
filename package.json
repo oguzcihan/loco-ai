@@ -1,0 +1,39 @@
+{
+  "name": "loco-ai",
+  "version": "0.1.0",
+  "description": "Fully local AI commit message generator powered by Ollama",
+  "type": "module",
+  "bin": {
+    "loco": "./bin/loco.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "bin/",
+    "src/"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "dev": "node bin/loco.js"
+  },
+  "keywords": [
+    "git",
+    "commit",
+    "ai",
+    "ollama",
+    "local",
+    "cli"
+  ],
+  "author": "Oğuzhan Cihan",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "inquirer": "^12.6.0",
+    "ora": "^8.2.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.1.4"
+  }
+}
