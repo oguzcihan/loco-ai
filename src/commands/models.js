@@ -24,7 +24,7 @@ export async function modelsCommand() {
 
     if (process.stdout.isTTY) {
       const modelName = await input({
-        message: 'Enter a model name to pull (e.g. qwen3.5:0.8b):',
+        message: 'Enter a model name to pull (e.g. qwen2.5-coder:1.5b):',
       });
       if (modelName.trim()) {
         await doPull(modelName.trim());

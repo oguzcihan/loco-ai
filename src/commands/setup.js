@@ -1,9 +1,15 @@
 import { execSync, spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
 import ora from 'ora';
 import chalk from 'chalk';
+import { confirm } from '@inquirer/prompts';
 import { checkOllamaRunning, listModels, pullModel } from '../core/ollama.js';
 import { getConfig, saveConfig } from '../utils/config.js';
+
+const OS_NAMES = {
+  darwin: 'macOS',
+  win32: 'Windows',
+  linux: 'Linux',
+};
 
 export async function setupCommand() {
   const config = getConfig();
@@ -11,15 +17,13 @@ export async function setupCommand() {
 
   // Step 1: Check ollama binary
   if (!ollamaInstalled()) {
-    printInstallGuide();
-    await waitForEnter();
-
-    if (!ollamaInstalled()) {
-      console.error(chalk.red('✖ Ollama still not found. Install it and try again.'));
+    const installed = await guidedOllamaInstall();
+    if (!installed) {
+      console.error(chalk.red('\u2716 Ollama is required. Setup cannot continue.'));
       process.exit(1);
     }
   }
-  console.log(chalk.green('✔') + ' Ollama is installed');
+  console.log(chalk.green('\u2714') + ' Ollama is installed');
 
   // Step 2: Check if ollama service is running, start if not
   let running = await checkOllamaRunning();
@@ -43,7 +47,7 @@ export async function setupCommand() {
     }
     spin.succeed('Ollama service is running');
   } else {
-    console.log(chalk.green('✔') + ' Ollama service is running');
+    console.log(chalk.green('\u2714') + ' Ollama service is running');
   }
 
   // Step 3: Check if default model is already pulled
@@ -51,15 +55,15 @@ export async function setupCommand() {
   const alreadyPulled = models.includes(model);
 
   if (alreadyPulled) {
-    console.log(chalk.green('✔') + ` Model ${chalk.cyan(model)} is already available`);
+    console.log(chalk.green('\u2714') + ` Model ${chalk.cyan(model)} is already available`);
   } else {
-    console.log(chalk.blue('ℹ') + ` Pulling ${chalk.cyan(model)}...`);
+    console.log(chalk.blue('\u2139') + ` Pulling ${chalk.cyan(model)}...`);
 
     try {
       await pullModel(model);
-      console.log(chalk.green('✔') + ` Model ${chalk.cyan(model)} is ready`);
+      console.log(chalk.green('\u2714') + ` Model ${chalk.cyan(model)} is ready`);
     } catch (err) {
-      console.error(chalk.red('✖') + ` Failed to pull ${model}: ${err.message}`);
+      console.error(chalk.red('\u2716') + ` Failed to pull ${model}: ${err.message}`);
       process.exit(1);
     }
   }
@@ -69,24 +73,111 @@ export async function setupCommand() {
 
   // Step 5: Done
   console.log('');
-  console.log(chalk.green('✔') + ' loco is ready. Run ' + chalk.cyan('`loco commit`') + ' in any git repo.');
+  console.log(chalk.green('\u2714') + ' loco is ready. Run ' + chalk.cyan('`loco commit`') + ' in any git repo.');
 }
 
-function ollamaInstalled() {
+async function guidedOllamaInstall() {
+  const osName = OS_NAMES[process.platform] || process.platform;
+
+  console.log('');
+  console.log(chalk.red('\u2716') + ' Ollama is not installed.');
+  console.log('');
+  console.log(`  Detected OS: ${chalk.bold(osName)}`);
+  console.log(`  Ollama is required to run local AI models.`);
+  console.log('');
+
+  const shouldInstall = await confirm({
+    message: 'Install Ollama now?',
+    default: true,
+  });
+
+  if (!shouldInstall) {
+    console.log('');
+    console.log(chalk.bold('To install manually:'));
+    printManualInstructions();
+    return false;
+  }
+
+  console.log('');
+
   try {
-    execSync('ollama --version', { stdio: 'ignore' });
-    return true;
+    switch (process.platform) {
+      case 'darwin':
+        return await installMacOS();
+      case 'linux':
+        return await installLinux();
+      case 'win32':
+        return await installWindows();
+      default:
+        console.log(chalk.yellow('\u26a0') + ` Automatic install is not supported on ${osName}.`);
+        console.log('');
+        printManualInstructions();
+        return false;
+    }
   } catch {
+    console.log('');
+    console.log(chalk.yellow('\u26a0') + ' Automatic installation failed.');
+    console.log('');
+    printManualInstructions();
     return false;
   }
 }
 
-function printInstallGuide() {
-  console.log('');
-  console.log(chalk.red('✖') + ' Ollama is not installed.');
-  console.log('');
-  console.log(chalk.bold('Install Ollama:'));
+async function installMacOS() {
+  // Check if brew is available
+  let hasBrew = false;
+  try {
+    execSync('brew --version', { stdio: 'ignore' });
+    hasBrew = true;
+  } catch { /* brew not installed */ }
 
+  if (hasBrew) {
+    console.log(chalk.dim('Running: brew install ollama'));
+    try {
+      execSync('brew install ollama', { stdio: 'inherit' });
+      if (ollamaInstalled()) return true;
+    } catch { /* fall through */ }
+  }
+
+  console.log('');
+  console.log(chalk.yellow('\u26a0') + (hasBrew
+    ? ' brew install failed.'
+    : ' Homebrew is not installed.'));
+  console.log(`  Download Ollama from: ${chalk.underline('https://ollama.com/download')}`);
+  console.log('');
+
+  const retry = await confirm({ message: 'Have you installed Ollama?', default: false });
+  return retry && ollamaInstalled();
+}
+
+async function installLinux() {
+  console.log(chalk.dim('Running: curl -fsSL https://ollama.com/install.sh | sh'));
+  execSync('curl -fsSL https://ollama.com/install.sh | sh', { stdio: 'inherit' });
+
+  if (ollamaInstalled()) return true;
+
+  console.log(chalk.yellow('\u26a0') + ' Installation script completed but ollama was not found.');
+  console.log(`  Try downloading from: ${chalk.underline('https://ollama.com/download')}`);
+  return false;
+}
+
+async function installWindows() {
+  console.log(chalk.dim('Running: winget install Ollama.Ollama'));
+  try {
+    execSync('winget install Ollama.Ollama', { stdio: 'inherit' });
+    if (ollamaInstalled()) return true;
+  } catch { /* fall through */ }
+
+  console.log('');
+  console.log(chalk.yellow('\u26a0') + ' winget install failed or winget is not available.');
+  console.log(`  Download Ollama from: ${chalk.underline('https://ollama.com/download')}`);
+  console.log('');
+
+  const retry = await confirm({ message: 'Have you installed Ollama?', default: false });
+  return retry && ollamaInstalled();
+}
+
+function printManualInstructions() {
   switch (process.platform) {
     case 'darwin':
       console.log(`  ${chalk.cyan('brew install ollama')}`);
@@ -100,19 +191,17 @@ function printInstallGuide() {
       console.log(`  ${chalk.cyan('curl -fsSL https://ollama.com/install.sh | sh')}`);
       break;
   }
-
   console.log('');
-  console.log('Install Ollama, then press ENTER to continue.');
+  console.log('After installing, run ' + chalk.cyan('loco setup') + ' again.');
 }
 
-function waitForEnter() {
-  return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    rl.question('', () => {
-      rl.close();
-      resolve();
-    });
-  });
+function ollamaInstalled() {
+  try {
+    execSync('ollama --version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function sleep(ms) {

@@ -115,7 +115,13 @@ export async function generate(prompt, model) {
         model,
         prompt,
         stream: true,
-        options: { num_predict: 200 },
+        options: {
+          num_predict: 300,
+          temperature: 0.3,
+          top_p: 0.9,
+          repeat_penalty: 1.1,
+          seed: 42,
+        },
         think: false,
       }),
     });

@@ -1,10 +1,10 @@
 import fs from 'node:fs';
-import { execSync } from 'node:child_process';
 import { generate } from '../core/ollama.js';
 import { getConfig } from '../utils/config.js';
-import { buildPrompt, parseMessages } from './commit.js';
-
-const MAX_DIFF_CHARS = 4000;
+import { getStagedDiff, getRecentCommits, compressDiff } from '../core/git.js';
+import { detectConvention } from '../core/convention-detector.js';
+import { buildPrompt } from '../core/prompt-builder.js';
+import { parseMessages, normalizeMessage } from '../core/message-parser.js';
 
 export async function hookRunCommand(filepath, source) {
   // Everything in a try — never block git on failure
@@ -27,22 +27,26 @@ export async function hookRunCommand(filepath, source) {
     if (!config.setupComplete) process.exit(0);
 
     // Get staged diff
-    const diff = execSync('git diff --staged', { encoding: 'utf-8' }).trim();
+    const diff = getStagedDiff();
     if (!diff) process.exit(0);
 
-    const truncated = diff.length > MAX_DIFF_CHARS
-      ? diff.slice(0, MAX_DIFF_CHARS) + '\n\n[... diff truncated]'
-      : diff;
+    const { diff: truncated } = compressDiff(diff);
 
-    const prompt = buildPrompt(truncated);
+    // Detect convention from git history (fail silently)
+    let convention = { type: 'unknown', confidence: 0, samples: [], ticketPattern: null };
+    try {
+      const commits = getRecentCommits(50);
+      convention = detectConvention(commits);
+    } catch { /* ignore */ }
+
+    const prompt = buildPrompt(truncated, convention, 'commit');
     const raw = await generate(prompt, config.defaultModel);
     const messages = parseMessages(raw);
 
     if (messages.length === 0) process.exit(0);
-    const message = messages[0];
+    const message = normalizeMessage(messages[0], convention);
 
     // Write the generated message to the file git gave us
-    // This pre-fills the commit editor so the user can review/edit
     fs.writeFileSync(filepath, message + '\n');
   } catch {
     // Silent exit — never block git

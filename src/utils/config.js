@@ -7,7 +7,7 @@ const CONFIG_DIR = path.join(os.homedir(), '.loco');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
 const DEFAULTS = {
-  defaultModel: 'qwen3.5:0.8b',
+  defaultModel: 'qwen2.5-coder:1.5b',
   setupComplete: false,
 };
 

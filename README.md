@@ -161,7 +161,7 @@ Then run:
 loco setup
 ```
 
-`loco setup` checks that Ollama is installed, starts the service if necessary, and pulls the default model: `qwen3.5:0.8b`.
+`loco setup` checks that Ollama is installed, starts the service if necessary, and pulls the default model: `qwen2.5-coder:1.5b`.
 
 ### 3. Generate your commit
 
@@ -255,11 +255,11 @@ This verifies:
 
 ## Models
 
-`loco` works with any model available through the [Ollama library](https://ollama.com/library). The default is `qwen3.5:0.8b` because commit drafting is a short, focused task where startup speed matters more than heavyweight general reasoning.
+`loco` works with any model available through the [Ollama library](https://ollama.com/library). The default is `qwen2.5-coder:1.5b` because commit drafting is a short, focused task where startup speed matters more than heavyweight general reasoning.
 
 | Model | Approx. Size | Speed | Notes |
 |-------|--------------|-------|-------|
-| `qwen3.5:0.8b` | Small | Fastest | Default, lightweight |
+| `qwen2.5-coder:1.5b` | Small | Fastest | Default, lightweight |
 | `llama3.2:1b` | Small | Fast | Good alternative |
 | `codellama` | Medium | Medium | More code-oriented |
 | `mistral:latest` | Medium | Medium | Stronger language quality |
@@ -302,7 +302,7 @@ The configuration surface is intentionally small. `loco` is meant to disappear i
 
 ```json
 {
-  "defaultModel": "qwen3.5:0.8b",
+  "defaultModel": "qwen2.5-coder:1.5b",
   "setupComplete": true
 }
 ```
@@ -424,7 +424,7 @@ No. The hook is designed to fail silently so normal Git usage keeps working even
 - **Node.js** >= 18
 - **Git**
 - **Ollama**
-- An Ollama model such as `qwen3.5:0.8b`
+- An Ollama model such as `qwen2.5-coder:1.5b`
 
 <br>
 
